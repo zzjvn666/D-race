@@ -3,7 +3,86 @@ import numpy as np
 
 # 导入原有功能函数
 from PIL import Image, ImageDraw, ImageFont
+# === 透视变换矩阵 M ===
+M = np.array([
+    [-1.55613833e+00, -3.10409025e+00, 1.95931565e+03],
+    [-4.89434105e-02, -8.06154531e+00, 2.56000370e+03],
+    [-1.17592704e-04, -1.05069141e-02, 1.00000000e+00]
+], dtype=np.float32)
 
+
+# === 非线性 Y 压缩函数 ===
+def nonlinear_y(y):
+    segments = [
+        (53.00, 81.00, 0.000000e+00, 0.000000e+00, 1.073529e+00, 5.300000e+01),
+        (81.00, 109.00, -2.388473e-05, 6.687726e-04, 1.073529e+00, 8.305882e+01),
+        (109.00, 138.00, -5.616156e-05, 9.979052e-04, 1.054804e+00, 1.131176e+02),
+        (138.00, 171.00, 9.569326e-05, -4.979490e-03, 9.709867e-01, 1.431765e+02),
+        (171.00, 201.00, -5.221177e-05, 3.132707e-03, 9.549702e-01, 1.732353e+02),
+        (201.00, 231.00, -1.480297e-18, 6.661338e-17, 1.001961e+00, 2.032941e+02),
+        (231.00, 261.00, -1.815255e-05, 5.445764e-04, 1.001961e+00, 2.333529e+02),
+        (261.00, 292.00, 1.663270e-05, -1.031227e-03, 9.856235e-01, 2.634118e+02),
+        (292.00, 323.00, 2.772669e-18, -1.468360e-16, 9.696395e-01, 2.934706e+02),
+        (323.00, 354.00, 1.663270e-05, -5.156136e-04, 9.696395e-01, 3.235294e+02),
+        (354.00, 384.00, -3.630510e-05, 1.633729e-03, 9.856235e-01, 3.535882e+02),
+        (384.00, 415.00, 3.326539e-05, -1.546841e-03, 9.856235e-01, 3.836471e+02),
+        (415.00, 445.00, -1.815255e-05, 1.089153e-03, 9.856235e-01, 4.137059e+02),
+        (445.00, 475.00, 0.000000e+00, 0.000000e+00, 1.001961e+00, 4.437647e+02),
+        (475.00, 505.00, 9.868649e-19, -2.960595e-17, 1.001961e+00, 4.738235e+02),
+        (505.00, 535.00, 1.897774e-05, -5.693323e-04, 1.001961e+00, 5.038824e+02),
+        (535.00, 564.00, -5.802834e-07, 6.192559e-04, 1.019041e+00, 5.339412e+02),
+    ]
+    for start, end, a, b, c, d in segments:
+        if start <= y < end:
+            t = y - start
+            return a * t ** 3 + b * t ** 2 + c * t + d
+    return y
+
+# M = np.array([
+#     [-1.09199972e+00, -2.34781415e+00, 1.34204325e+03],
+#     [-2.33254794e-01, -5.74609503e+00, 1.81585111e+03],
+#     [-4.29184713e-04, -7.94632703e-03, 1.00000000e+00]
+# ], dtype=np.float32)
+
+
+# # === 非线性 Y 压缩函数 ===
+# def nonlinear_y(y):
+#     segments = [
+#         (38.00, 62.00, -9.666785e-06, -1.994196e-03, 1.075254e+00, 3.800000e+01),
+#         (62.00, 89.00, 2.378948e-04, -8.443135e-03, 9.628286e-01, 6.252381e+01),
+#         (89.00, 110.00, -5.430358e-04, 1.810019e-02, 1.027175e+00, 8.704762e+01),
+#         (110.00, 135.00, 1.407911e-04, -7.039557e-03, 1.068947e+00, 1.115714e+02),
+#         (135.00, 160.00, 6.634351e-05, -1.658588e-03, 9.809524e-01, 1.360952e+02),
+#         (160.00, 183.00, -8.286487e-05, 3.811784e-03, 1.022417e+00, 1.606190e+02),
+#         (183.00, 206.00, -1.210369e-04, 2.783848e-03, 1.066253e+00, 1.851429e+02),
+#         (206.00, 232.00, 1.148202e-04, -5.254581e-03, 1.002224e+00, 2.096667e+02),
+#         (232.00, 257.00, 1.675723e-06, 7.225507e-04, 9.618413e-01, 2.341905e+02),
+#         (257.00, 281.00, -3.596284e-05, 1.726216e-03, 1.001111e+00, 2.587143e+02),
+#         (281.00, 305.00, -3.596284e-05, 8.631081e-04, 1.021825e+00, 2.832381e+02),
+#         (305.00, 330.00, 3.225348e-05, -1.612674e-03, 1.001111e+00, 3.077619e+02),
+#         (330.00, 355.00, 1.776357e-18, -8.881784e-17, 9.809524e-01, 3.322857e+02),
+#         (355.00, 380.00, -3.552714e-19, 1.332268e-17, 9.809524e-01, 3.568095e+02),
+#         (380.00, 405.00, 3.225348e-05, -8.063369e-04, 9.809524e-01, 3.813333e+02),
+#         (405.00, 429.00, -1.060142e-04, 3.407448e-03, 1.001111e+00, 4.058571e+02),
+#         (429.00, 455.00, 8.412757e-05, -3.658562e-03, 9.814758e-01, 4.303810e+02),
+#         (455.00, 480.00, 1.675723e-06, 7.225507e-04, 9.618413e-01, 4.549048e+02),
+#         (480.00, 504.00, -7.192567e-05, 2.589324e-03, 1.001111e+00, 4.794286e+02),
+#         (504.00, 529.00, 6.450695e-05, -2.419011e-03, 1.001111e+00, 5.039524e+02),
+#         (529.00, 553.00, -1.206871e-06, 8.920730e-04, 1.001111e+00, 5.284762e+02),
+#     ]
+#     for start, end, a, b, c, d in segments:
+#         if start <= y < end:
+#             t = y - start
+#             return a * t ** 3 + b * t ** 2 + c * t + d
+#     return y
+
+# === 图像坐标变换函数 ===
+def img_change(x, y):
+    src = np.array([[[x, y]]], dtype=np.float32)
+    dst = cv2.perspectiveTransform(src, M)[0][0]
+    x_new, y_new = dst[0], nonlinear_y(dst[1])
+    distance = 100 * ((-y_new + 413) / 303 + 1)
+    return distance
 def cv2_putText_Chinese(img, text, position, font_size, color):
     """在OpenCV图像上绘制中文文本"""
     img_pil = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
@@ -542,7 +621,242 @@ def _detect_outer_black_border(image, draw_result=True, lower_threshold=0, upper
             'inner_points': None,
             'binary_image': binary  # 仍然返回二值化图像
         }
-def detect_outer_black_border(image, draw_result=True, lower_threshold=0, upper_threshold=255, debug=False, COLOR_B=80, COLOR_G=70, COLOR_R=60):
+def detect_outer_black_border(image, draw_result=True, lower_threshold=0, upper_threshold=255, debug=True,
+                              COLOR_B=32, COLOR_G=27, COLOR_R=27):
+    def resize_to_fit(img, target_size=(800, 600)):
+        """将图像按比例缩放以适应目标大小"""
+        h, w = img.shape[:2]
+        target_w, target_h = target_size
+        scale = min(target_w / w, target_h / h)
+        new_w, new_h = int(w * scale), int(h * scale)
+        resized = cv2.resize(img, (new_w, new_h))
+        return resized
+
+    gray = cv2.inRange(image, (0, 0, 0), (COLOR_B, COLOR_G, COLOR_R))
+
+    # # 1. 提取黑色区域（基于BGR阈值）
+    # gray = cv2.GaussianBlur(cv2.inRange(image, (0, 0, 0), (COLOR_B, COLOR_G, COLOR_R)), (3, 3), 1)
+
+    # 2. 形态学处理：先开运算再闭运算
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (10, 10))
+    # gray = cv2.morphologyEx(gray, cv2.MORPH_OPEN, kernel)  # 开运算：去小噪点
+    gray = cv2.morphologyEx(gray, cv2.MORPH_CLOSE, kernel)  # 闭运算：填小空洞
+    gray = cv2.bitwise_not(gray)  # 反转：黑色区域变为白色，便于后续处理
+    # gray = cv2.inRange(image, (0, 0, 0), (COLOR_B, COLOR_G, COLOR_R))
+    # gray = cv2.bitwise_not(gray)  # 反转：黑色区域变为白色，便于后续处理
+    # 2. 二值化（反转颜色）
+    _, binary = cv2.threshold(gray, lower_threshold, upper_threshold, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    if debug:
+        cv2.imshow("Step 1 - Binary Inverted", resize_to_fit(binary))
+        cv2.waitKey(0)
+
+    # 3. 定义感兴趣区域（ROI）
+    x1, y1 = 952, 153
+    x2, y2 = 1245, 593
+    # 确保坐标有效性（左上角 < 右下角，且在图像范围内）
+    h, w = binary.shape[:2]
+    x1 = max(0, min(x1, w - 1))
+    x2 = max(x1 + 1, min(x2, w))
+    y1 = max(0, min(y1, h - 1))
+    y2 = max(y1 + 1, min(y2, h))
+    binary_roi = binary[y1:y2, x1:x2]  # 裁剪ROI
+
+    # 形态学操作（开运算：去除小噪声）
+    # kernel = np.ones((2, 2), np.uint8)
+    # binary_roi = cv2.morphologyEx(binary_roi, cv2.MORPH_OPEN, kernel, iterations=1)
+
+    if debug:
+        cv2.imshow("Step 2 - Morphology (ROI)", resize_to_fit(binary_roi))
+        cv2.waitKey(0)
+
+    # 4. 查找轮廓及层级关系
+    contours, hierarchy = cv2.findContours(binary_roi, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    if hierarchy is None or len(contours) == 0:
+        print("未检测到轮廓。")
+        return {
+            'contour': None,
+            'outer_points': None,
+            'inner_points': None,
+            'binary_image': binary_roi
+        }
+    hierarchy = hierarchy[0]  # 层级结构：[Next, Previous, First_Child, Parent]
+
+    # 显示所有轮廓（调试用）
+    if debug:
+        all_contours_img = np.zeros_like(binary_roi)
+        cv2.drawContours(all_contours_img, contours, -1, (255, 255, 255), 2)
+        cv2.imshow("Step 3 - All Contours", resize_to_fit(all_contours_img))
+        cv2.waitKey(0)
+
+    # 5. 筛选有效外轮廓（无父轮廓，且面积符合要求）
+    image_area = binary_roi.shape[0] * binary_roi.shape[1]
+    candidate_outer = []
+    for i, cnt in enumerate(contours):
+        area = cv2.contourArea(cnt)
+        # 外轮廓条件：无父轮廓（hierarchy[i][3] == -1），且面积在合理范围
+        if hierarchy[i][3] == -1 and (image_area * 0.005 <= area <= image_area * 0.8):
+            candidate_outer.append((i, cnt, area))
+
+    if not candidate_outer:
+        print("未检测到有效外轮廓。")
+        return {
+            'contour': None,
+            'outer_points': None,
+            'inner_points': None,
+            'binary_image': binary_roi
+        }
+
+    # 选择面积最大的外轮廓（最可能的目标外边框）
+    best_outer_idx, best_outer, best_outer_area = max(candidate_outer, key=lambda x: x[2])
+
+    # 6. 筛选外轮廓的直接子轮廓作为内轮廓（核心修改）
+    best_inner = None
+    # 遍历所有轮廓，寻找外轮廓的直接子轮廓（父轮廓索引为外轮廓索引）
+    for i, cnt in enumerate(contours):
+        # 内轮廓条件：父轮廓是最佳外轮廓，且面积小于外轮廓
+        if hierarchy[i][3] == best_outer_idx:
+            inner_area = cv2.contourArea(cnt)
+            if inner_area < best_outer_area * 0.9:  # 确保内轮廓在外侧内
+                best_inner = cnt
+                break  # 取第一个符合条件的直接子轮廓
+
+    def sort_corners(corners):
+        """按 左上、右上、右下、左下 顺序返回角点"""
+        corners = np.array(corners)
+        s = corners.sum(axis=1)
+        diff = np.diff(corners, axis=1)
+
+        top_left = corners[np.argmin(s)]
+        bottom_right = corners[np.argmax(s)]
+        top_right = corners[np.argmin(diff)]
+        bottom_left = corners[np.argmax(diff)]
+
+        return [tuple(top_left), tuple(top_right), tuple(bottom_right), tuple(bottom_left)]
+
+    # === 外轮廓角点 ===
+    outer_corners = None
+    if best_outer is not None:
+        epsilon = 0.02 * cv2.arcLength(best_outer, True)
+        approx = cv2.approxPolyDP(best_outer, epsilon, True)
+        if len(approx) >= 4:
+            approx_pts = approx.reshape(-1, 2)
+            outer_corners = [(pt[0] + x1, pt[1] + y1) for pt in approx_pts]
+            xs = [pt[0] for pt in outer_corners]
+            ys = [pt[1] for pt in outer_corners]
+            outer_top_left = (min(xs), min(ys))
+            outer_bottom_right = (max(xs), max(ys))
+
+    # === 内轮廓角点 ===
+    inner_corners = None
+    if best_inner is not None:
+        epsilon = 0.02 * cv2.arcLength(best_inner, True)
+        approx = cv2.approxPolyDP(best_inner, epsilon, True)
+        if len(approx) >= 4:
+            approx_pts = approx.reshape(-1, 2)
+            inner_corners = [(pt[0] + x1, pt[1] + y1) for pt in approx_pts]
+            xs = [pt[0] for pt in inner_corners]
+            ys = [pt[1] for pt in inner_corners]
+            inner_top_left = (min(xs), min(ys))
+            inner_bottom_right = (max(xs), max(ys))
+
+    if debug:
+        final_roi_img = cv2.cvtColor(binary_roi.copy(), cv2.COLOR_GRAY2BGR)
+        if outer_corners:
+            for pt in outer_corners:
+                cv2.circle(final_roi_img, (pt[0] - x1, pt[1] - y1), 5, (255, 0, 255), -1)
+        if inner_corners:
+            for pt in inner_corners:
+                cv2.circle(final_roi_img, (pt[0] - x1, pt[1] - y1), 5, (0, 255, 255), -1)
+        cv2.imshow("Step 4 - Final Contours (ROI)", resize_to_fit(final_roi_img))
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
+    result = {
+         'contour': {'outer': best_outer, 'inner': best_inner},
+
+            'outer': best_outer,
+            'inner': best_inner,
+        'binary_image': binary_roi
+
+    }
+
+    # 检查内外角点数量
+    if outer_corners and inner_corners and len(inner_corners) == 4:
+        # 情况1：内外角点都正好有4个
+        if len(outer_corners) == 4:
+            result['outer_points'] = {
+                'top_left': outer_top_left,
+                'bottom_right': outer_bottom_right
+            }
+            result['inner_points'] = {
+                'top_left': inner_top_left,
+                'bottom_right': inner_bottom_right
+            }
+        # 情况2：内轮廓4个角点，外轮廓4个以上角点
+        elif len(outer_corners) >= 4:
+            # 提取内轮廓的四个角点
+            inner_tl, inner_tr, inner_br, inner_bl = inner_corners  # 假设已按顺序排列
+
+            # 定义一个函数计算两点之间的距离
+            def distance(pt1, pt2):
+                return ((pt1[0] - pt2[0]) ** 2 + (pt1[1] - pt2[1]) ** 2) ** 0.5
+
+            # 为每个内轮廓角点找到外轮廓中最接近的对应角点
+            # 左上：找比内轮廓左上更靠左上的外轮廓点
+            outer_tl = min([pt for pt in outer_corners if pt[0] <= inner_tl[0] and pt[1] <= inner_tl[1]],
+                           key=lambda p: distance(p, inner_tl))
+
+            # 右上：找比内轮廓右上更靠右上的外轮廓点
+            outer_tr = min([pt for pt in outer_corners if pt[0] >= inner_tr[0] and pt[1] <= inner_tr[1]],
+                           key=lambda p: distance(p, inner_tr))
+
+            # 右下：找比内轮廓右下更靠右下的外轮廓点
+            outer_br = min([pt for pt in outer_corners if pt[0] >= inner_br[0] and pt[1] >= inner_br[1]],
+                           key=lambda p: distance(p, inner_br))
+
+            # 左下：找比内轮廓左下更靠左下的外轮廓点
+            outer_bl = min([pt for pt in outer_corners if pt[0] <= inner_bl[0] and pt[1] >= inner_bl[1]],
+                           key=lambda p: distance(p, inner_bl))
+
+            # 检查相对的角点距离是否差不多近（这里用阈值判断）
+            diag1 = distance(outer_tl, outer_br)
+            diag2 = distance(outer_tr, outer_bl)
+            distance_ratio = min(diag1, diag2) / max(diag1, diag2)
+
+            # 如果对角线角线长度比例在可接受范围内（例如0.8以上）
+            if distance_ratio > 0.8:
+                # 重塑外轮廓，使用新的四个角点
+                new_outer_corners = [outer_tl, outer_tr, outer_br, outer_bl]
+                result['contour']['outer'] = new_outer_corners  # 替换旧外轮廓
+
+                # 返回新的外轮廓角点
+                result['outer_points'] = {
+                    'top_left': outer_tl,
+                    'bottom_right': outer_br
+                }
+                result['inner_points'] = {
+                    'top_left': inner_tl,
+                    'bottom_right': inner_br
+                }
+                # 更新outer_corners为新的四个角点
+                outer_corners = new_outer_corners
+            else:
+                if debug:
+                    print("外轮廓对角点距离差异过大，不进行重塑")
+        return result
+    return {
+        'contour': {'outer': best_outer, 'inner': best_inner},
+        'outer_points': {
+            'top_left': outer_top_left,
+            'bottom_right': outer_bottom_right
+        },
+        'inner_points': {
+            'top_left': inner_top_left,
+            'bottom_right': inner_bottom_right
+        },
+        'binary_image': binary_roi
+    }
+
+def _detect_outer_black_border(image, draw_result=True, lower_threshold=0, upper_threshold=255, debug=True, COLOR_B=80, COLOR_G=70, COLOR_R=60):
     import cv2
     import numpy as np
 
@@ -716,6 +1030,16 @@ def detect_outer_black_border(image, draw_result=True, lower_threshold=0, upper_
         cv2.imshow("Step 3 - Binary Inverted", resize_to_fit(binary))
         cv2.waitKey(0)
 
+    x1, y1 = 952, 153
+    x2, y2 = 1245, 593
+    # 确保坐标有效性（左上角 < 右下角）
+    x1, x2 = min(x1, x2), max(x1, x2)
+    y1, y2 = min(y1, y2), max(y1, y2)
+
+    # 检查ROI是否在图像范围内
+    height, width = binary.shape[:2]
+    binary=binary[y1:y2, x1:x2]
+
     # 4. 查找轮廓
     contours, hierarchy = cv2.findContours(binary, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
     if hierarchy is None:
@@ -728,7 +1052,7 @@ def detect_outer_black_border(image, draw_result=True, lower_threshold=0, upper_
         }
     hierarchy = hierarchy[0]
     # 显示所有轮廓
-    all_contours_img = image.copy()
+    all_contours_img = binary.copy()
 
     if debug:
         cv2.drawContours(all_contours_img, contours, -1, (0, 255, 255), 2)  # 黄色轮廓
@@ -739,25 +1063,27 @@ def detect_outer_black_border(image, draw_result=True, lower_threshold=0, upper_
 
     # 5. 筛选内外轮廓
     valid_contours = []
-    image_area = image.shape[0] * image.shape[1]
+    image_area = binary.shape[0] * binary.shape[1]
 
     # 步骤1.1：开闭操作
     # 定义闭操作核，大小可调节，越大闭合效果越明显
     kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3,3))
 
-    # 进行闭操作，先膨胀后腐蚀，闭合小缝隙
-    closed = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)
-    closed = cv2.morphologyEx(closed, cv2.MORPH_OPEN, kernel)
-    if debug:
-        cv2.imshow("Step 1.1 - closed", resize_to_fit(closed))
-        cv2.waitKey(0)
-    contours_closed, hierarchy_closed = cv2.findContours(closed, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-    if debug:
-        img_show = image.copy()  # 原图复制一份用于绘制
-        cv2.drawContours(img_show, contours_closed, -1, (0, 255, 0), 2)  # 绿色轮廓，线宽3
+    # # 进行闭操作，先膨胀后腐蚀，闭合小缝隙
+    # closed = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)
+    # closed = cv2.morphologyEx(closed, cv2.MORPH_OPEN, kernel)
+    # if debug:
+    #     cv2.imshow("Step 1.1 - closed", resize_to_fit(closed))
+    #     cv2.waitKey(0)
 
-        cv2.imshow("Closed Contours", resize_to_fit(img_show))
-        cv2.waitKey(0)
+    contours_closed, hierarchy_closed = cv2.findContours(binary, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+
+    # if debug:
+    #     img_show = image.copy()  # 原图复制一份用于绘制
+    #     cv2.drawContours(img_show, contours_closed, -1, (0, 255, 0), 2)  # 绿色轮廓，线宽3
+    #
+    #     cv2.imshow("Closed Contours", resize_to_fit(img_show))
+    #     cv2.waitKey(0)
 
 
     # 步骤1：面积过滤
@@ -768,7 +1094,7 @@ def detect_outer_black_border(image, draw_result=True, lower_threshold=0, upper_
             area_filtered.append((i, cnt))
 
     if debug and area_filtered:
-        area_filtered_img = image.copy()
+        area_filtered_img = binary.copy()
         cnt_list = [cnt for _, cnt in area_filtered]
         cv2.drawContours(area_filtered_img, cnt_list, -1, (0, 255, 0), 2)
         cv2.imshow("Step 2 - Area Filtered", resize_to_fit(area_filtered_img))
@@ -905,7 +1231,7 @@ def detect_outer_black_border(image, draw_result=True, lower_threshold=0, upper_
 
             if best_index != -1 and max_iou > 0.3:
                 # 保存替换前的图像
-                before_replace_img = image.copy()
+                before_replace_img = binary.copy()
                 before_cnt_list = [cnt for _, cnt in area_filtered]
                 cv2.drawContours(before_replace_img, before_cnt_list, -1, (0, 255, 0), 2)
 
@@ -914,12 +1240,12 @@ def detect_outer_black_border(image, draw_result=True, lower_threshold=0, upper_
                 print(f"轮廓 {best_index} 替换成功 (IoU={max_iou:.2f})")
 
                 # 保存替换后的图像
-                after_replace_img = image.copy()
+                after_replace_img = binary.copy()
                 after_cnt_list = [cnt for _, cnt in area_filtered]
                 cv2.drawContours(after_replace_img, after_cnt_list, -1, (0, 255, 0), 2)
 
                 # 在原图上标记新旧轮廓对比
-                compare_img = image.copy()
+                compare_img = binary.copy()
                 # 用绿色绘制旧轮廓
                 cv2.drawContours(compare_img, [before_cnt_list[best_index]], -1, (0, 255, 0), 2)
                 # 用红色绘制新轮廓
@@ -935,7 +1261,7 @@ def detect_outer_black_border(image, draw_result=True, lower_threshold=0, upper_
 
     if debug:
         # 显示最终处理后的轮廓
-        area_filtered_img = image.copy()
+        area_filtered_img = binary.copy()
         cnt_list = [cnt for _, cnt in area_filtered]
         cv2.drawContours(area_filtered_img, cnt_list, -1, (0, 255, 0), 2)
         cv2.imshow("Step 2 - Area Filtered", resize_to_fit(area_filtered_img))
@@ -1031,14 +1357,14 @@ def detect_outer_black_border(image, draw_result=True, lower_threshold=0, upper_
 
 
     if debug and valid_outer_contours:
-        outer_contours_img = image.copy()
+        outer_contours_img = binary.copy()
         cnt_list = [cnt for _, cnt, _ in valid_outer_contours]
         cv2.drawContours(outer_contours_img, cnt_list, -1, (0, 255, 255), 6)  # 黄色外轮廓
         cv2.imshow("Step 5 - Outer Contours", resize_to_fit(outer_contours_img))
         cv2.waitKey(0)
 
     if debug and valid_inner_contours:
-        inner_contours_img = image.copy()
+        inner_contours_img = binary.copy()
         cnt_list = [cnt for _, cnt, _ in valid_inner_contours]
         cv2.drawContours(inner_contours_img, cnt_list, -1, (255, 255, 0), 6)  # 青色内轮廓
         cv2.imshow("Step 6 - Inner Contours", resize_to_fit(inner_contours_img))
@@ -1072,7 +1398,7 @@ def detect_outer_black_border(image, draw_result=True, lower_threshold=0, upper_
         outer_bottom_right = (x + w, y + h)
         if debug:
             # 绘制外轮廓
-            outer_contour_img = image.copy()
+            outer_contour_img = binary.copy()
             cv2.drawContours(outer_contour_img, [best_outer], -1, (0, 0, 255), 6)  # 红色外轮廓
             cv2.imshow("Step 7 - Best Outer Contour", resize_to_fit(outer_contour_img))
             cv2.waitKey(0)
@@ -1084,14 +1410,14 @@ def detect_outer_black_border(image, draw_result=True, lower_threshold=0, upper_
         inner_bottom_right = (x + w, y + h)
         if debug:
             # 绘制内轮廓
-            inner_contour_img = image.copy()
+            inner_contour_img = binary.copy()
             cv2.drawContours(inner_contour_img, [best_inner], -1, (0, 255, 0), 6)  # 绿色内轮廓
             cv2.imshow("Step 8 - Best Inner Contour", resize_to_fit(inner_contour_img))
             cv2.waitKey(0)
 
     # 8. 绘制最终结果
     if best_outer is not None and best_inner is not None and debug:
-        final_img = image.copy()
+        final_img = binary.copy()
         cv2.drawContours(final_img, [best_outer], -1, (0, 0, 255), 6)  # 红色外轮廓
         cv2.drawContours(final_img, [best_inner], -1, (0, 255, 0), 6)  # 绿色内轮廓
 

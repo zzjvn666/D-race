@@ -29,8 +29,8 @@ def _find_shape_1(gray_img, top_left, bottom_right):
     # 显示ROI区域
     display_img = cv2.cvtColor(roi, cv2.COLOR_GRAY2BGR)
     display_img = cv2_putText_Chinese(display_img, "1. ROI区域", (10, 30), 20, (0, 0, 255))
-    cv2.imshow('处理过程', display_img)
-    cv2.waitKey(0)
+    # cv2.imshow('处理过程', display_img)
+    # cv2.waitKey(0)
 
     # 2. 使用大津法自动确定阈值并提取白色区域
     _, binary = cv2.threshold(roi, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
@@ -38,8 +38,8 @@ def _find_shape_1(gray_img, top_left, bottom_right):
     # 显示二值化结果
     display_img = cv2.cvtColor(binary, cv2.COLOR_GRAY2BGR)
     display_img = cv2_putText_Chinese(display_img, "2. 白色区域提取", (10, 30), 20, (0, 0, 255))
-    cv2.imshow('处理过程', display_img)
-    cv2.waitKey(0)
+    # cv2.imshow('处理过程', display_img)
+    # cv2.waitKey(0)
 
     # 查找白色区域轮廓（注意使用RETR_EXTERNAL只检测外部轮廓）
     contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -60,8 +60,8 @@ def _find_shape_1(gray_img, top_left, bottom_right):
         # 显示轮廓和顶点
         display_img = contour_img.copy()
         display_img = cv2_putText_Chinese(display_img, f"3.{i + 1} 轮廓及顶点", (10, 30), 20, (0, 0, 255))
-        cv2.imshow('处理过程', display_img)
-        cv2.waitKey(0)
+        # cv2.imshow('处理过程', display_img)
+        # cv2.waitKey(0)
 
         # 计算每个顶点的内角（内部为白色的角）
         angles = []
@@ -91,8 +91,8 @@ def _find_shape_1(gray_img, top_left, bottom_right):
         # 显示角度计算结果
         display_img = contour_img.copy()
         display_img = cv2_putText_Chinese(display_img, f"3.{i + 1} 顶点角度", (10, 30), 20, (0, 0, 255))
-        cv2.imshow('处理过程', display_img)
-        cv2.waitKey(0)
+        # cv2.imshow('处理过程', display_img)
+        # cv2.waitKey(0)
 
         print(f"白色区域{i + 1}的顶点角度:", angles)
 
@@ -150,208 +150,145 @@ def dynamic_threshold(roi, method='otsu', thresh_min=160, thresh_max=255):
 import cv2
 import numpy as np
 
+def detect_outer_black_border(image, draw_result=True, lower_threshold=0, upper_threshold=255, debug=False, 
+                              COLOR_B=80, COLOR_G=70, COLOR_R=60):
+    def resize_to_fit(img, target_size=(800, 600)):
+        """将图像按比例缩放以适应目标大小"""
+        h, w = img.shape[:2]
+        target_w, target_h = target_size
+        scale = min(target_w / w, target_h / h)
+        new_w, new_h = int(w * scale), int(h * scale)
+        resized = cv2.resize(img, (new_w, new_h))
+        return resized
 
-def _detect_outer_black_border(image, draw_result=True, lower_threshold=0, upper_threshold=255, debug=True):
-    """
-    检测图像中形状相似的父子黑色轮廓
+    # 1. 提取黑色区域（基于BGR阈值）
+    gray = cv2.GaussianBlur(cv2.inRange(image, (0, 0, 0), (COLOR_B, COLOR_G, COLOR_R)), (15, 15), 3)
+    gray = cv2.bitwise_not(gray)  # 反转：黑色区域变为白色，便于后续处理
 
-    参数:
-        image: 输入图像
-        draw_result: 是否绘制结果
-        lower_threshold: 阈值下限
-        upper_threshold: 阈值上限
-        debug: 是否显示调试窗口
-
-    返回:
-        包含外轮廓、内轮廓及其坐标点的字典
-    """
-    if debug:
-        # 显示原始图像
-        cv2.imshow('1. Original Image', image)
-        cv2.waitKey(0)
-
-    # 1. 使用颜色范围转换为黑色掩码
-    black_mask = cv2.inRange(image, (0, 0, 0), (32, 77, 77))
-    if debug:
-        cv2.imshow('2. Black Color Mask', black_mask)
-        cv2.waitKey(0)
-
-    # 应用高斯模糊
-    gray = cv2.GaussianBlur(black_mask, (5, 5), 3)
-    if debug:
-        cv2.imshow('3. After Gaussian Blur', gray)
-        cv2.waitKey(0)
-
-    # 反转颜色（为了轮廓检测）
-    gray = cv2.bitwise_not(gray)
-    if debug:
-        cv2.imshow('4. After Inversion', gray)
-        cv2.waitKey(0)
-
-    # 2. 阈值处理
+    # 2. 二值化（反转颜色）
     _, binary = cv2.threshold(gray, lower_threshold, upper_threshold, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
     if debug:
-        cv2.imshow('5. After Thresholding', binary)
+        cv2.imshow("Step 1 - Binary Inverted", resize_to_fit(binary))
         cv2.waitKey(0)
 
-    # 定义ROI坐标 - 可以根据需要调整
-    x1, y1 = 964, 153
+    # 3. 定义感兴趣区域（ROI）
+    x1, y1 = 952, 153
     x2, y2 = 1245, 593
-    x1, x2 = min(x1, x2), max(x1, x2)
-    y1, y2 = min(y1, y2), max(y1, y2)
+    # 确保坐标有效性（左上角 < 右下角，且在图像范围内）
+    h, w = binary.shape[:2]
+    x1 = max(0, min(x1, w - 1))
+    x2 = max(x1 + 1, min(x2, w))
+    y1 = max(0, min(y1, h - 1))
+    y2 = max(y1 + 1, min(y2, h))
+    binary_roi = binary[y1:y2, x1:x2]  # 裁剪ROI
 
-    # 在原始图像上绘制ROI
-    roi_visual = image.copy()
-    cv2.rectangle(roi_visual, (x1, y1), (x2, y2), (255, 0, 0), 2)
+    # 形态学操作（开运算：去除小噪声）
+    kernel = np.ones((6, 6), np.uint8)
+    binary_roi = cv2.morphologyEx(binary_roi, cv2.MORPH_OPEN, kernel, iterations=1)
     if debug:
-        cv2.imshow('6. ROI Selection', roi_visual)
+        cv2.imshow("Step 2 - Morphology (ROI)", resize_to_fit(binary_roi))
         cv2.waitKey(0)
 
-    # 提取ROI
-    height, width = binary.shape[:2]
-    if x1 >= width or y1 >= height or x2 <= 0 or y2 <= 0:
-        print("ROI在图像边界之外。")
+    # 4. 查找轮廓及层级关系
+    contours, hierarchy = cv2.findContours(binary_roi, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    if hierarchy is None or len(contours) == 0:
+        print("未检测到轮廓。")
         return {
             'contour': None,
             'outer_points': None,
             'inner_points': None,
-            'binary_image': binary
+            'binary_image': binary_roi
+        }
+    hierarchy = hierarchy[0]  # 层级结构：[Next, Previous, First_Child, Parent]
+
+    # 显示所有轮廓（调试用）
+    if debug:
+        all_contours_img = np.zeros_like(binary_roi)
+        cv2.drawContours(all_contours_img, contours, -1, (255, 255, 255), 2)
+        cv2.imshow("Step 3 - All Contours", resize_to_fit(all_contours_img))
+        cv2.waitKey(0)
+
+    # 5. 筛选有效外轮廓（无父轮廓，且面积符合要求）
+    image_area = binary_roi.shape[0] * binary_roi.shape[1]
+    candidate_outer = []
+    for i, cnt in enumerate(contours):
+        area = cv2.contourArea(cnt)
+        # 外轮廓条件：无父轮廓（hierarchy[i][3] == -1），且面积在合理范围
+        if hierarchy[i][3] == -1 and (image_area * 0.005 <= area <= image_area * 0.8):
+            candidate_outer.append((i, cnt, area))
+
+    if not candidate_outer:
+        print("未检测到有效外轮廓。")
+        return {
+            'contour': None,
+            'outer_points': None,
+            'inner_points': None,
+            'binary_image': binary_roi
         }
 
-    binary_roi = binary[y1:y2, x1:x2]
-    if debug:
-        cv2.imshow('7. ROI Extracted', binary_roi)
-        cv2.waitKey(0)
+    # 选择面积最大的外轮廓（最可能的目标外边框）
+    best_outer_idx, best_outer, best_outer_area = max(candidate_outer, key=lambda x: x[2])
 
-    # 查找轮廓
-    contours, hierarchy = cv2.findContours(binary_roi, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    # 6. 筛选外轮廓的直接子轮廓作为内轮廓（核心修改）
+    best_inner = None
+    # 遍历所有轮廓，寻找外轮廓的直接子轮廓（父轮廓索引为外轮廓索引）
+    for i, cnt in enumerate(contours):
+        # 内轮廓条件：父轮廓是最佳外轮廓，且面积小于外轮廓
+        if hierarchy[i][3] == best_outer_idx:
+            inner_area = cv2.contourArea(cnt)
+            if inner_area < best_outer_area * 0.9:  # 确保内轮廓在外侧内
+                best_inner = cnt
+                break  # 取第一个符合条件的直接子轮廓
 
-    # 绘制所有找到的轮廓
-    contour_visual = cv2.cvtColor(binary_roi, cv2.COLOR_GRAY2BGR)
-    if debug:
-        cv2.drawContours(contour_visual, contours, -1, (0, 255, 0), 1)
-        cv2.imshow('8. All Contours Found', contour_visual)
-        cv2.waitKey(0)
+    # 7. 提取外轮廓和内轮廓的角点（转换为原图坐标）
+    outer_top_left = outer_bottom_right = None
+    inner_top_left = inner_bottom_right = None
 
-    if contours:
-        # 找到最大的轮廓（外轮廓）
-        largest_contour = max(contours, key=cv2.contourArea)
-
-        # 获取外轮廓的周长和近似多边形
-        outer_perimeter = cv2.arcLength(largest_contour, True)
-        outer_approx = cv2.approxPolyDP(largest_contour, 0.02 * outer_perimeter, True)
-        outer_corners = len(outer_approx)
-
-        # 绘制最大轮廓
-        largest_visual = cv2.cvtColor(binary_roi, cv2.COLOR_GRAY2BGR)
-        if debug:
-            cv2.drawContours(largest_visual, [largest_contour], -1, (0, 255, 0), 2)
-            cv2.imshow('9. Largest Contour (Outer)', largest_visual)
-            cv2.waitKey(0)
-
-        # 获取外轮廓的边界矩形
-        x, y, w, h = cv2.boundingRect(largest_contour)
-        outer_top_left = (x + x1, y + y1)
+    # 外轮廓角点
+    if best_outer is not None:
+        x, y, w, h = cv2.boundingRect(best_outer)
+        outer_top_left = (x + x1, y + y1)  # 转换回原图坐标（ROI偏移补偿）
         outer_bottom_right = (x + w + x1, y + h + y1)
 
-        # 寻找内轮廓（形状相似且完全在外轮廓内部）
-        inner_contour = None
-        inner_top_left = None
-        inner_bottom_right = None
-        best_similarity = 0.1  # 形状相似度阈值
+    # 内轮廓角点（仅当存在有效内轮廓时）
+    if best_inner is not None:
+        x, y, w, h = cv2.boundingRect(best_inner)
+        inner_top_left = (x + x1, y + y1)
+        inner_bottom_right = (x + w + x1, y + h + y1)
 
-        # 按面积排序轮廓（跳过最大的外轮廓）
-        contours_sorted = sorted(contours, key=cv2.contourArea, reverse=True)[1:]
+    # 8. 调试：显示最终结果
+    if debug:
+        # 在ROI上绘制外轮廓（蓝色）和内轮廓（绿色）
+        final_roi_img = cv2.cvtColor(binary_roi.copy(), cv2.COLOR_GRAY2BGR)
+        if best_outer is not None:
+            cv2.drawContours(final_roi_img, [best_outer], -1, (255, 0, 0), 3)
+        if best_inner is not None:
+            cv2.drawContours(final_roi_img, [best_inner], -1, (0, 255, 0), 3)
+        
+        # 绘制角点（红色）
+        if outer_top_left and outer_bottom_right:
+            cv2.circle(final_roi_img, (outer_top_left[0]-x1, outer_top_left[1]-y1), 5, (0,0,255), -1)
+            cv2.circle(final_roi_img, (outer_bottom_right[0]-x1, outer_bottom_right[1]-y1), 5, (0,0,255), -1)
+        if inner_top_left and inner_bottom_right:
+            cv2.circle(final_roi_img, (inner_top_left[0]-x1, inner_top_left[1]-y1), 5, (0,0,255), -1)
+            cv2.circle(final_roi_img, (inner_bottom_right[0]-x1, inner_bottom_right[1]-y1), 5, (0,0,255), -1)
+        
+        cv2.imshow("Step 4 - Final Contours (ROI)", resize_to_fit(final_roi_img))
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
 
-        inner_visual = cv2.cvtColor(binary_roi, cv2.COLOR_GRAY2BGR)
-        cv2.drawContours(inner_visual, [largest_contour], -1, (0, 255, 0), 2)
-
-        for i, cnt in enumerate(contours_sorted):
-            # 检查轮廓是否足够大
-            cnt_area = cv2.contourArea(cnt)
-            if cnt_area < 0.01 * cv2.contourArea(largest_contour):  # 内轮廓面积至少是外轮廓的1%
-                continue
-
-            # 获取内轮廓的边界矩形
-            x_in, y_in, w_in, h_in = cv2.boundingRect(cnt)
-
-            # 检查是否完全位于外轮廓内部
-            if (x_in >= x and y_in >= y and
-                    x_in + w_in <= x + w and
-                    y_in + h_in <= y + h):
-
-                # 检查形状相似度
-                inner_perimeter = cv2.arcLength(cnt, True)
-                inner_approx = cv2.approxPolyDP(cnt, 0.02 * inner_perimeter, True)
-                inner_corners = len(inner_approx)
-
-                # 1. 检查角点数量是否相同（形状相似的基础）
-                if abs(inner_corners - outer_corners) > 1:
-                    continue
-
-                # 2. 检查轮廓相似度（形状匹配）
-                similarity = cv2.matchShapes(outer_approx, inner_approx, 1, 0.0)
-
-                # 3. 检查宽高比是否相似
-                outer_ratio = w / h
-                inner_ratio = w_in / h_in
-                ratio_diff = abs(outer_ratio - inner_ratio)
-
-                if debug:
-                    print(
-                        f"轮廓 {i}: 相似度={similarity:.4f}, 角点差={abs(inner_corners - outer_corners)}, 宽高比差={ratio_diff:.4f}")
-
-                # 如果形状足够相似
-                if (similarity < best_similarity and ratio_diff < 0.2):
-                    best_similarity = similarity
-                    inner_contour = cnt
-                    inner_top_left = (x_in + x1, y_in + y1)
-                    inner_bottom_right = (x_in + w_in + x1, y_in + h_in + y1)
-
-                    if debug:
-                        # 绘制内轮廓候选
-                        temp_visual = inner_visual.copy()
-                        cv2.drawContours(temp_visual, [cnt], -1, (0, 0, 255), 2)
-                        cv2.putText(temp_visual, f"Sim: {similarity:.4f}", (x_in, y_in - 10),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
-                        cv2.imshow(f'10.{i} Inner Contour Candidate', temp_visual)
-                        cv2.waitKey(0)
-
-        if draw_result:
-            # 在原始图像上绘制最终结果
-            result_image = image.copy()
-            if largest_contour is not None:
-                cv2.rectangle(result_image, outer_top_left, outer_bottom_right, (0, 255, 0), 2)
-                cv2.putText(result_image, "Outer", outer_top_left,
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-            if inner_contour is not None:
-                cv2.rectangle(result_image, inner_top_left, inner_bottom_right, (0, 0, 255), 2)
-                cv2.putText(result_image, "Inner", inner_top_left,
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-            cv2.imshow('11. Final Result', result_image)
-            cv2.waitKey(0)
-
-        return {
-            'contour': largest_contour,
-            'outer_points': {
-                'top_left': outer_top_left,
-                'bottom_right': outer_bottom_right
-            },
-            'inner_points': {
-                'top_left': inner_top_left,
-                'bottom_right': inner_bottom_right
-            } if inner_contour is not None else None,
-            'binary_image': binary_roi
-        }
-    else:
-        print("未检测到目标黑色外框。")
-        return {
-            'contour': None,
-            'outer_points': None,
-            'inner_points': None,
-            'binary_image': binary_roi
-        }
-
+    return {
+        'contour': {'outer': best_outer, 'inner': best_inner},
+        'outer_points': {
+            'top_left': outer_top_left,
+            'bottom_right': outer_bottom_right
+        },
+        'inner_points': {
+            'top_left': inner_top_left,
+            'bottom_right': inner_bottom_right
+        },
+        'binary_image': binary_roi
+    }
 
 def find_shape_1(gray_img, top_left, bottom_right):
     """
@@ -392,8 +329,110 @@ def find_shape_1(gray_img, top_left, bottom_right):
     # 4. 绘制轮廓
     contour_img = cv2.cvtColor(binary.copy(), cv2.COLOR_GRAY2BGR)
     cv2.drawContours(contour_img, [valid_contour], -1, (0, 255, 0), 2)
-    cv2.imshow("Step 3: Valid Contour", contour_img)
-    cv2.waitKey(0)
+    # cv2.imshow("Step 3: Valid Contour", contour_img)
+    # cv2.waitKey(0)
+
+    # 5. 多边形逼近 + 顶点角度
+    epsilon = 0.02 * cv2.arcLength(valid_contour, True)
+    approx = cv2.approxPolyDP(valid_contour, epsilon, True)
+    approx = approx.reshape(-1, 2)
+
+    angle_list = []
+    for i in range(len(approx)):
+        p1 = approx[i - 1]
+        p2 = approx[i]
+        p3 = approx[(i + 1) % len(approx)]
+        ang = angle_between(p1, p2, p3)
+        angle_list.append((tuple(p2), ang))
+
+    # 6. 标注角点与角度
+    annotated = cv2.cvtColor(binary.copy(), cv2.COLOR_GRAY2BGR)
+    for (pt, ang) in angle_list:
+        cv2.circle(annotated, pt, 5, (0, 0, 255), -1)
+        cv2.putText(annotated, f"{ang:.1f}", (pt[0] + 5, pt[1] - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
+    # cv2.imshow("Step 4: Angles", annotated)
+    # cv2.waitKey(0)
+    # cv2.destroyAllWindows()
+
+    # 7. 形状判断
+    num_vertices = len(approx)
+
+    # 计算轮廓的圆形度
+    perimeter = cv2.arcLength(valid_contour, True)
+    circularity = 4 * np.pi * max_area / (perimeter * perimeter)
+
+    # 计算尺寸（边长/直径）
+    if num_vertices >= 3:  # 多边形
+        # 计算平均边长
+        side_lengths = []
+        for i in range(num_vertices):
+            p1 = approx[i]
+            p2 = approx[(i + 1) % num_vertices]
+            side_lengths.append(np.linalg.norm(p1 - p2))
+        size = np.mean(side_lengths)
+    else:  # 圆形
+        size = np.sqrt(4 * max_area / np.pi)  # 直径
+
+    # 形状分类
+    if circularity > 0.9:  # 接近圆形
+        shape = 'circle'
+        # print(circularity)
+    else:
+        if num_vertices == 3:
+            shape = 'triangle'
+        elif num_vertices == 4:
+            # 检查是否是矩形（角度接近90度）
+            angles = [ang for (pt, ang) in angle_list]
+            if all(85 <= ang <= 95 for ang in angles):
+                shape = 'quadrate'
+            else:
+                shape = 'quadrate'
+        else:
+            # print(num_vertices)
+            shape = f'circle'
+
+    return shape, size
+
+    """
+    输入：
+        gray_img：整张灰度图（单通道，0-255）
+        top_left：内轮廓左上角 (x,y)
+        bottom_right：内轮廓右下角 (x,y)
+    返回：
+        shape: 形状类型（'triangle', 'rectangle', 'pentagon', 'hexagon', 'circle'）
+        size: 边长/直径
+    """
+    # 1. 裁剪ROI
+    gray_img = gray_img
+    # cv2.imshow("Step 1: ROI", gray_img)
+    # cv2.waitKey(0)
+
+    # 2. 二值化（白色为前景）
+    binary = dynamic_threshold(gray_img, method='otsu')
+    # cv2.imshow("Step 2: Binary", binary)
+    # cv2.waitKey(0)
+
+    # 3. 找外轮廓
+    contours, hierarchy = cv2.findContours(binary, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+
+    valid_contour = None
+    max_area = 0
+
+    for cnt in contours:
+        area = cv2.contourArea(cnt)
+        if area > max_area and is_fully_filled(binary, cnt):
+            max_area = area
+            valid_contour = cnt
+
+    if valid_contour is None:
+        print("没有找到满足条件的白色闭合区域")
+        return None, None
+
+    # 4. 绘制轮廓
+    contour_img = cv2.cvtColor(binary.copy(), cv2.COLOR_GRAY2BGR)
+    # cv2.drawContours(contour_img, [valid_contour], -1, (0, 255, 0), 2)
+    # cv2.imshow("Step 3: Valid Contour", contour_img)
+    # cv2.waitKey(0)
 
     # 5. 多边形逼近 + 顶点角度
     epsilon = 0.02 * cv2.arcLength(valid_contour, True)
@@ -453,21 +492,29 @@ def find_shape_1(gray_img, top_left, bottom_right):
             shape = f'circle'
 
     return shape, size
+from maix import camera, display
+from maix import image
 
-if __name__ == "__main__":
+# 初始化相机和显示器
 
+disp = display.Display()
+cam = camera.Camera(1920, 1080)
+
+import cv2
+
+while True:
     # image = cv2.imread(r"E:\D-Race\C_T\test\1\1.jpg")
-
-    image = cv2.imread(r"E:\D-Race\C_T\maix\img\1\photo_4.jpg")
-    # image = cv2.imread(r"E:\D-Race\C_T\1_s.png")
-    result = detect_outer_black_border(image, lower_threshold=50, upper_threshold=200)
-
-
+    # 读取相机图像
+    img = cam.read()
+    disp.show(img)
+    img = image.image2cv(img, ensure_bgr=False, copy=False)
+    # # image = cv2.imread(r"E:\D-Race\C_T\1_s.png")
+    result = detect_outer_black_border(img, lower_threshold=50, upper_threshold=200)
+    # gray = cv2.inRange(img, (0, 0, 0), (32, 77, 77))
     gray = result['binary_image']
     # show by maix.display
-    img_show = image.cv2image(gray, bgr=True, copy=False)
-    disp.show(img_show)
-
+    # img_show = image.cv2image(gray, bgr=True, copy=False)
+    # disp.show(img_show)
     inner_top_left = result['inner_points']['top_left']
     inner_bottom_right = result['inner_points']['bottom_right']
     outer_top_left = result['outer_points']['top_left']
@@ -476,7 +523,8 @@ if __name__ == "__main__":
     x = (outer_top_left[1] + outer_bottom_right[1])/2
     y = outer_bottom_right[1]
     distance = round(img_change(x,y)*100) # cm *100
-    print(y)
+    if distance <=10000:
+        distance = 10000
     height = abs(outer_top_left[1]-outer_bottom_right[1])
     width = abs(outer_top_left[0]-outer_bottom_right[0])
     area = width * height
@@ -488,7 +536,7 @@ if __name__ == "__main__":
 
     import math
     if shape == "quadrate":
-        print("X = ",round((math.sqrt(size*size*623.7/(area)+2)*100))) # cm *100
+        print("X = ",round((math.sqrt(size*size*623.7/(area)+3.5)*100))) # cm *100
     elif shape == "triangle":
         print("X = ", round((math.sqrt(size * size * 623.7 / (area))+2.63)*100)) # cm *100
     elif shape == "circle":
